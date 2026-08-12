@@ -30,6 +30,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +42,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,12 +102,16 @@ fun EditorScreen(viewModel: EditorViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Preview area
+        // Preview area with tab selector
+        var previewTab by remember { mutableStateOf(PreviewTab.ANAGLYPH) }
+
         PreviewArea(
             original = state.originalBitmap,
             depth = state.depthBitmap,
             anaglyph = state.anaglyphBitmap,
             isProcessing = state.isProcessing,
+            selectedTab = previewTab,
+            onTabChange = { previewTab = it },
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -217,55 +225,77 @@ private fun AnaglyphHeader() {
     }
 }
 
+enum class PreviewTab(val label: String) {
+    ORIGINAL("Original"),
+    DEPTH("Depth Map"),
+    ANAGLYPH("Anaglyph"),
+}
+
 @Composable
 private fun PreviewArea(
     original: Bitmap?,
     depth: Bitmap?,
     anaglyph: Bitmap?,
     isProcessing: Boolean,
+    selectedTab: PreviewTab,
+    onTabChange: (PreviewTab) -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-    ) {
-        Box(
+    Column {
+        // Tab selector
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            when {
-                anaglyph != null -> {
+            PreviewTab.entries.forEach { tab ->
+                FilterChip(
+                    selected = selectedTab == tab,
+                    onClick = { onTabChange(tab) },
+                    label = { Text(tab.label, style = MaterialTheme.typography.labelLarge) },
+                    enabled = when (tab) {
+                        PreviewTab.ORIGINAL -> original != null
+                        PreviewTab.DEPTH -> depth != null
+                        PreviewTab.ANAGLYPH -> anaglyph != null
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.background,
+                    ),
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                val displayBitmap = when (selectedTab) {
+                    PreviewTab.ORIGINAL -> original
+                    PreviewTab.DEPTH -> depth
+                    PreviewTab.ANAGLYPH -> anaglyph
+                }
+
+                if (displayBitmap != null) {
                     androidx.compose.foundation.Image(
-                        bitmap = anaglyph.asImageBitmap(),
-                        contentDescription = "Anaglyph preview",
+                        bitmap = displayBitmap.asImageBitmap(),
+                        contentDescription = selectedTab.label,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
-                }
-                depth != null -> {
-                    androidx.compose.foundation.Image(
-                        bitmap = depth.asImageBitmap(),
-                        contentDescription = "Depth map preview",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                original != null -> {
-                    androidx.compose.foundation.Image(
-                        bitmap = original.asImageBitmap(),
-                        contentDescription = "Original image",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                else -> {
+                } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -283,14 +313,14 @@ private fun PreviewArea(
                         )
                     }
                 }
-            }
 
-            if (isProcessing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(36.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    strokeWidth = 3.dp,
-                )
+                if (isProcessing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp,
+                    )
+                }
             }
         }
     }

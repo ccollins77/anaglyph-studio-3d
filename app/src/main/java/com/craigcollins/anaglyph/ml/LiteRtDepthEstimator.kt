@@ -2,6 +2,8 @@ package com.craigcollins.anaglyph.ml
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.google.ai.edge.litert.Accelerator
+import com.google.ai.edge.litert.CompiledModel
 import com.craigcollins.anaglyph.domain.DepthConvention
 import com.craigcollins.anaglyph.domain.DepthModelSpec
 import java.nio.ByteBuffer
@@ -25,7 +27,7 @@ class LiteRtDepthEstimator(
 ) : AutoCloseable {
 
     @Volatile
-    private var compiledModel: Any? = null
+    private var compiledModel: CompiledModel? = null
 
     @Volatile
     private var isModelLoaded = false
@@ -55,32 +57,19 @@ class LiteRtDepthEstimator(
 
         try {
             // GPU-first initialization using LiteRT CompiledModel API
-            val modelClass = Class.forName("com.google.ai.edge.litert.CompiledModel")
-            val optionsClass = Class.forName("com.google.ai.edge.litert.CompiledModel\$Options")
-            val acceleratorClass = Class.forName("com.google.ai.edge.litert.Accelerator")
-
-            // Try GPU first
             compiledModel = try {
-                val gpuEnum = acceleratorClass.getField("GPU").get(null)
-                val options = optionsClass.getConstructor(acceleratorClass).newInstance(gpuEnum)
-                val createMethod = modelClass.getMethod(
-                    "create",
-                    android.content.res.AssetManager::class.java,
-                    String::class.java,
-                    optionsClass
+                CompiledModel.create(
+                    context.assets,
+                    spec.assetPath,
+                    CompiledModel.Options(Accelerator.GPU)
                 )
-                createMethod.invoke(null, context.assets, spec.assetPath, options)
             } catch (gpuFailure: Exception) {
                 // CPU fallback
-                val cpuEnum = acceleratorClass.getField("CPU").get(null)
-                val options = optionsClass.getConstructor(acceleratorClass).newInstance(cpuEnum)
-                val createMethod = modelClass.getMethod(
-                    "create",
-                    android.content.res.AssetManager::class.java,
-                    String::class.java,
-                    optionsClass
+                CompiledModel.create(
+                    context.assets,
+                    spec.assetPath,
+                    CompiledModel.Options(Accelerator.CPU)
                 )
-                createMethod.invoke(null, context.assets, spec.assetPath, options)
             }
             isModelLoaded = true
         } catch (e: DepthModelMissingException) {
@@ -100,34 +89,18 @@ class LiteRtDepthEstimator(
         val model = compiledModel ?: throw IllegalStateException("Call start() before infer()")
 
         try {
-            // Use reflection to call the LiteRT API — this avoids compile-time
-            // dependency issues while still using the real CompiledModel API.
-            val modelClass = model.javaClass
+            // LiteRT 2.1.0 CompiledModel API
+            val inputBuffers = model.createInputBuffers()
+            val outputBuffers = model.createOutputBuffers()
 
-            // compiledModel.createInputBuffers() -> List<TensorBuffer>
-            val createInputBuffers = modelClass.getMethod("createInputBuffers")
-            val inputBuffers = createInputBuffers.invoke(model) as List<*>
+            // Write preprocessed input to the first input tensor
+            inputBuffers[0].writeFloat(input)
 
-            // compiledModel.createOutputBuffers() -> List<TensorBuffer>
-            val createOutputBuffers = modelClass.getMethod("createOutputBuffers")
-            val outputBuffers = createOutputBuffers.invoke(model) as List<*>
+            // Run inference
+            model.run(inputBuffers, outputBuffers)
 
-            // inputBuffers[0].writeFloat(input)
-            val tensorBufferClass = inputBuffers[0]!!.javaClass
-            val writeFloat = tensorBufferClass.getMethod("writeFloat", FloatArray::class.java)
-            writeFloat.invoke(inputBuffers[0], input)
-
-            // compiledModel.run(inputBuffers, outputBuffers)
-            val runMethod = modelClass.getMethod(
-                "run",
-                List::class.java,
-                List::class.java
-            )
-            runMethod.invoke(model, inputBuffers, outputBuffers)
-
-            // outputBuffers[0].readFloat() -> FloatArray
-            val readFloat = tensorBufferClass.getMethod("readFloat")
-            return readFloat.invoke(outputBuffers[0]) as FloatArray
+            // Read the depth map from the first output tensor
+            return outputBuffers[0].readFloat()
         } catch (e: Exception) {
             throw DepthInferenceException("Inference failed: ${e.message}", e)
         }
@@ -135,10 +108,7 @@ class LiteRtDepthEstimator(
 
     override fun close() {
         try {
-            compiledModel?.let {
-                val closeMethod = it.javaClass.getMethod("close")
-                closeMethod.invoke(it)
-            }
+            compiledModel?.close()
         } catch (e: Exception) {
             // Best effort
         }

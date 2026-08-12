@@ -17,6 +17,7 @@ package com.craigcollins.anaglyph.render
  * - uPhoto:    sampler2D — the original source image
  * - uDepth:   sampler2D — the normalized depth map (grayscale, R channel)
  * - uFadeMask: sampler2D — dedicated edge fade mask (opacity in R channel)
+ * - uTexelSize: vec2 — size of one texel in UV units (1.0/width, 1.0/height)
  * - uFocusDepth: float — focal plane depth [0, 1]
  * - uMaxParallax: float — maximum horizontal shift in pixels
  * - uDepthStrength: float — user depth strength multiplier
@@ -54,6 +55,7 @@ object AnaglyphShader {
         uniform sampler2D uPhoto;
         uniform sampler2D uDepth;
         uniform sampler2D uFadeMask;
+        uniform vec2 uTexelSize;
         uniform float uFocusDepth;
         uniform float uMaxParallax;
         uniform float uDepthStrength;
@@ -70,13 +72,12 @@ object AnaglyphShader {
             float offset = (d - uFocusDepth) * uMaxParallax * uDepthStrength;
             float halfOffset = offset * 0.5;
 
-            // Convert pixel offset to UV offset
-            // (assumes texture is width pixels; caller sets 1.0/width)
-            vec2 texelSize = vec2(1.0) / vec2(textureSize2D(uPhoto, 0));
+            // Convert pixel offset to UV offset using uniform texel size
+            vec2 halfOffsetUV = vec2(halfOffset, 0.0) * uTexelSize;
 
             // Backward sample for left and right eye views
-            vec3 leftEye  = texture2D(uPhoto, vTexCoord + vec2(halfOffset, 0.0) * texelSize).rgb;
-            vec3 rightEye = texture2D(uPhoto, vTexCoord - vec2(halfOffset, 0.0) * texelSize).rgb;
+            vec3 leftEye  = texture2D(uPhoto, vTexCoord + halfOffsetUV).rgb;
+            vec3 rightEye = texture2D(uPhoto, vTexCoord - halfOffsetUV).rgb;
 
             vec3 anaglyph;
             if (uEyeSwap == 1) {

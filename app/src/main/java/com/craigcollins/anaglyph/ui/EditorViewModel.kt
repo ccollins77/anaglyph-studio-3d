@@ -89,12 +89,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 // Cache the full-resolution depth for re-rendering
                 fullResolutionDepth = depthMap
 
-                // Step 4: Create depth preview bitmap
+                // Step 4: Create depth preview bitmap (downsample for UI display)
                 val depthPreview = withContext(Dispatchers.Default) {
-                    // Downsampled preview for the depth map display
                     val previewSize = 384
-                    val previewDepth = postprocessor.upscale(
-                        depthMap, previewSize, previewSize, previewSize
+                    // Downsample the full-resolution depth to preview size
+                    val previewDepth = resizeDepth(
+                        depthMap, bitmap.width, bitmap.height,
+                        previewSize, previewSize
                     )
                     postprocessor.toBitmap(previewDepth, previewSize)
                 }
@@ -126,6 +127,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val rawOutput = depthEstimator.infer(modelInput)
             val normalized = postprocessor.normalize(rawOutput)
 
+            // Mark model as available — LiteRT inference succeeded
+            _state.value = _state.value.copy(modelAvailable = true)
+
             // Upscale to source dimensions for rendering
             postprocessor.upscale(
                 normalized,
@@ -146,6 +150,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             )
             generateSyntheticDepth(sourceBitmap.width, sourceBitmap.height)
         }
+    }
+
+    /**
+     * Resize a depth array from src dimensions to dst dimensions using nearest-neighbor.
+     */
+    private fun resizeDepth(
+        depth: FloatArray,
+        srcWidth: Int,
+        srcHeight: Int,
+        dstWidth: Int,
+        dstHeight: Int
+    ): FloatArray {
+        val output = FloatArray(dstWidth * dstHeight)
+        val xRatio = srcWidth.toFloat() / dstWidth
+        val yRatio = srcHeight.toFloat() / dstHeight
+        for (y in 0 until dstHeight) {
+            val srcY = (y * yRatio).toInt().coerceIn(0, srcHeight - 1)
+            for (x in 0 until dstWidth) {
+                val srcX = (x * xRatio).toInt().coerceIn(0, srcWidth - 1)
+                output[y * dstWidth + x] = depth[srcY * srcWidth + srcX]
+            }
+        }
+        return output
     }
 
     /**
