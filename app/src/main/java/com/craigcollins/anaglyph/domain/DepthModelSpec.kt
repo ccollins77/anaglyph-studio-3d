@@ -14,7 +14,7 @@ package com.craigcollins.anaglyph.domain
  * @param depthConvention Whether larger output values mean nearer or farther
  */
 data class DepthModelSpec(
-    val assetPath: String = "models/depth_model.tflite",
+    val assetPath: String = "models/midas_small_256_fp16.tflite",
     val inputSize: Int = 384,
     val numChannels: Int = 3,
     val outputSize: Int = 384,
