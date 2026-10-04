@@ -1,4 +1,4 @@
-# Anaglyph
+# Anaglyph Studio 3D
 
 A native Android app that generates 3D red-cyan anaglyph images from a **single** photo using on-device AI depth estimation.
 
