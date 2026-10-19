@@ -48,7 +48,7 @@ com.craigcollins.anaglyph/
 - Kotlin 2.2.0, Jetpack Compose, Material 3
 - No storage permissions required (Photo Picker + MediaStore insert)
 
-## Model Integration
+## Model Integration (model is included) 
 
 Place a licensed monocular depth estimation `.tflite` model at:
 ```
